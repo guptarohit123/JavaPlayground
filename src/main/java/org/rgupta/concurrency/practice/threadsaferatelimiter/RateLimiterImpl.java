@@ -31,7 +31,7 @@ public class RateLimiterImpl implements RateLimiter {
             }
             res[0] = val.size() <= LIMIT;
             if (res[0]) {
-                val.add(now);
+                val.addLast(now);
             }
             return val;
         });
