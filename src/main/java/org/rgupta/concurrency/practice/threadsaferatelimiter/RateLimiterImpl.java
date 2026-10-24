@@ -30,6 +30,9 @@ public class RateLimiterImpl implements RateLimiter {
                 val.pollFirst();
             }
             res[0] = val.size() <= LIMIT;
+            if (res[0]) {
+                val.add(now);
+            }
             return val;
         });
         return res[0];
