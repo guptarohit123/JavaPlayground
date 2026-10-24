@@ -5,10 +5,11 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class RateLimiterImpl implements RateLimiter {
 
-    public static final int INTERVAL = 60;
+    public static final long INTERVAL = TimeUnit.SECONDS.toMillis(60);
     public static final int LIMIT = 5;
     private final Clock clock;
     private final Map<String, Deque<Long>> userRequests;
@@ -29,8 +30,8 @@ public class RateLimiterImpl implements RateLimiter {
             while (!val.isEmpty() && now - val.peekFirst() >= INTERVAL) {
                 val.pollFirst();
             }
-            res[0] = val.size() <= LIMIT;
-            if (res[0]) {
+            res[0] = val.size() < LIMIT;
+            if(res[0]) {
                 val.addLast(now);
             }
             return val;
