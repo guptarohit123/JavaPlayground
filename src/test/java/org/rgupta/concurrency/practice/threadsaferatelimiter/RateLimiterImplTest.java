@@ -59,7 +59,9 @@ class RateLimiterImplTest {
         CountDownLatch readyLatch = new CountDownLatch(numThreads);
         CountDownLatch startLatch = new CountDownLatch(1);
 
-        try (ExecutorService executorService = Executors.newFixedThreadPool(numThreads)) {
+        ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
+        try {
+
             List<Future<Boolean>> rateLimiterResults = new ArrayList<>();
             for (int i = 0; i < numThreads; i++) {
                 Future<Boolean> future = executorService.submit(() ->
@@ -70,7 +72,7 @@ class RateLimiterImplTest {
                 });
                 rateLimiterResults.add(future);
             }
-            readyLatch.await();
+            assertTrue(readyLatch.await(5, TimeUnit.SECONDS), "workers did not became ready");
             startLatch.countDown();
             int accepted = 0;
             for (Future<Boolean> res : rateLimiterResults) {
@@ -81,9 +83,7 @@ class RateLimiterImplTest {
             assertEquals(5, accepted);
         } finally {
             startLatch.countDown();
+            executorService.shutdownNow();
         }
-
     }
-
-
 }

@@ -3,21 +3,34 @@ package org.rgupta.concurrency.practice.threadsaferatelimiter;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class TestClock extends Clock {
 
-    private final AtomicLong time = new AtomicLong();
+    private final AtomicLong time;
+    private final ZoneId zone;
+
+    public TestClock() {
+        this(new AtomicLong(), ZoneOffset.UTC);
+    }
+
+    private TestClock(AtomicLong time, ZoneId zone) {
+        this.time = time;
+        this.zone = Objects.requireNonNull(zone);
+    }
 
     @Override
     public ZoneId getZone() {
-        return ZoneId.systemDefault();
+        return zone;
     }
 
     @Override
-    public Clock withZone(ZoneId ignored) {
-        return this;
+    public Clock withZone(ZoneId newZone) {
+        return new TestClock(time, newZone);
     }
+
 
     @Override
     public Instant instant() {
