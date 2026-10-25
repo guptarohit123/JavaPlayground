@@ -7,21 +7,21 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class TestClock extends Clock {
 
-    AtomicLong time = new AtomicLong();
+    private final AtomicLong time = new AtomicLong();
 
     @Override
     public ZoneId getZone() {
-        return null;
+        return ZoneId.systemDefault();
     }
 
     @Override
-    public Clock withZone(ZoneId zone) {
-        return null;
+    public Clock withZone(ZoneId ignored) {
+        return this;
     }
 
     @Override
     public Instant instant() {
-        return null;
+        return Instant.ofEpochMilli(time.get());
     }
 
     @Override
