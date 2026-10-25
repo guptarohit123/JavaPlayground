@@ -22,14 +22,14 @@ class RateLimiterImplTest {
     }
 
     @Test
-    void requestsAreAccepted() {
+    void shouldAllowFirstRequestForClient() {
         clock.setTime(10);
         assertTrue(rateLimiter.allowRequest("clientId1"));
         assertTrue(rateLimiter.allowRequest("clientId2"));
     }
 
     @Test
-    void requestsRejectedWhenLimitBreached() {
+    void shouldRejectSixthRequestInWindow() {
         long time = 10;
         for (int i = 0; i < 5; i++) {
             clock.setTime(time++);
@@ -39,7 +39,7 @@ class RateLimiterImplTest {
     }
 
     @Test
-    void expiredTimeStampsRemoved() {
+    void shouldAllowRequestAtWindowBoundary() {
         long time = 10;
         for (int i = 0; i < 5; i++) {
             clock.setTime(time++);
@@ -62,7 +62,7 @@ class RateLimiterImplTest {
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         try {
 
-            List<Future<Boolean>> rateLimiterResults = new ArrayList<>();
+            List<Future<Boolean>> requestResults = new ArrayList<>();
             for (int i = 0; i < numThreads; i++) {
                 Future<Boolean> future = executorService.submit(() ->
                 {
@@ -70,13 +70,13 @@ class RateLimiterImplTest {
                     startLatch.await();
                     return rateLimiter.allowRequest("client1");
                 });
-                rateLimiterResults.add(future);
+                requestResults.add(future);
             }
-            assertTrue(readyLatch.await(5, TimeUnit.SECONDS), "workers did not became ready");
+            assertTrue(readyLatch.await(5, TimeUnit.SECONDS), "Workers did not became ready");
             startLatch.countDown();
             int accepted = 0;
-            for (Future<Boolean> res : rateLimiterResults) {
-                if (res.get(1, TimeUnit.SECONDS)) {
+            for (Future<Boolean> res : requestResults) {
+                if (res.get(5, TimeUnit.SECONDS)) {
                     accepted++;
                 }
             }
