@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +18,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -107,22 +107,29 @@ class BoundedBlockingQueueTest {
 	}
 
 	@Test
-	void putShouldRespondToInterrupts() throws InterruptedException {
+	void putShouldRespondToInterrupts() throws InterruptedException, ExecutionException, TimeoutException {
 		for (int i = 0; i < CAPACITY; i++) {
 			testQueue.put(1);
 		}
+		AtomicReference<Thread> threadAtomicReference = new AtomicReference<>();
+		CountDownLatch testReadyLatch = new CountDownLatch(1);
 		ExecutorService executorService = Executors.newSingleThreadExecutor();
 		try {
 			final Future<Boolean> putFuture = executorService.submit(() -> {
-				testQueue.put(2);
-				return true;
+				threadAtomicReference.set(Thread.currentThread());
+				testReadyLatch.countDown();
+				try {
+					testQueue.put(2);
+					return false;
+				} catch (InterruptedException e) {
+					return true;
+				}
 			});
+			assertTrue(testReadyLatch.await(5, TimeUnit.SECONDS));
 			assertFalse(putFuture.isDone(), "Put should block as capacity is reached");
-			putFuture.cancel(true);
-			assertThrows(
-					CancellationException.class,
-					() -> putFuture.get(5, TimeUnit.SECONDS));
-			assertTrue(putFuture.isCancelled());
+			assertThrows(TimeoutException.class, () -> putFuture.get(200, TimeUnit.MILLISECONDS));
+			threadAtomicReference.get().interrupt();
+			assertTrue(putFuture.get(5, TimeUnit.SECONDS));
 			assertEquals(CAPACITY, testQueue.size());
 		} finally {
 			executorService.shutdownNow();
@@ -130,16 +137,25 @@ class BoundedBlockingQueueTest {
 	}
 
 	@Test
-	void takeShouldRespondTInterrupts() {
+	void takeShouldRespondToInterrupts() throws ExecutionException, InterruptedException, TimeoutException {
 		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		AtomicReference<Thread> threadAtomicReference = new AtomicReference<>();
+		CountDownLatch testReadyLatch = new CountDownLatch(1);
 		try {
-			final Future<Integer> takeFuture = executorService.submit(() -> testQueue.take());
-			assertFalse(takeFuture.isDone(), "Take should block as queue is empty");
-			takeFuture.cancel(true);
-			assertThrows(
-					CancellationException.class,
-					() -> takeFuture.get(5, TimeUnit.SECONDS));
-			assertTrue(takeFuture.isCancelled());
+			final Future<Boolean> takeFuture = executorService.submit(() -> {
+				threadAtomicReference.set(Thread.currentThread());
+				testReadyLatch.countDown();
+				try {
+					testQueue.take();
+					return false;
+				} catch (InterruptedException ex) {
+					return true;
+				}
+			});
+			assertTrue(testReadyLatch.await(5, TimeUnit.SECONDS));
+			assertThrows(TimeoutException.class, () -> takeFuture.get(200, TimeUnit.MILLISECONDS));
+			threadAtomicReference.get().interrupt();
+			assertTrue(takeFuture.get(5, TimeUnit.SECONDS));
 		} finally {
 			executorService.shutdownNow();
 		}
