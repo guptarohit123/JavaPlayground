@@ -1,153 +1,215 @@
 package org.rgupta.concurrency.practice.threadsafeboundedqueue;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 class BoundedBlockingQueueTest {
 
-    private static final int CAPACITY = 5;
-    private BoundedBlockingQueue<Integer> testQueue;
+	private static final int CAPACITY = 5;
+	private BoundedBlockingQueue<Integer> testQueue;
 
-    @BeforeEach
-    void setUp() {
-        testQueue = new BoundedBlockingQueue<>(CAPACITY);
-    }
+	@BeforeEach
+	void setUp() {
+		testQueue = new BoundedBlockingQueue<>(CAPACITY);
+	}
 
+	@Test
+	void shouldAddItemsNonBlockingWhenWithinCapacity() throws InterruptedException {
+		int item = 0;
+		for (int i = 0; i < CAPACITY; i++) {
+			testQueue.put(item++);
+		}
+		assertEquals(CAPACITY, testQueue.size(), "Test queue successfully populated");
+	}
 
-    @Test
-    void shouldAddItemsNonBlockingWhenWithinCapacity() throws InterruptedException {
-        int item = 0;
-        for (int i = 0; i < CAPACITY; i++) {
-            testQueue.put(item++);
-        }
-        assertEquals(CAPACITY, testQueue.size(), "Test queue successfully populated");
-    }
+	@Test
+	void shouldBlockOnTakeWhenQueueEmpty() throws InterruptedException, ExecutionException, TimeoutException {
+		ExecutorService executorService = Executors.newFixedThreadPool(1);
+		try {
+			Future<Integer> takeItemFuture = executorService.submit(() -> {
+				try {
+					return testQueue.take();
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			});
+			assertFalse(takeItemFuture.isDone(), "Queue should block as it is empty");
+			testQueue.put(12);
+			assertEquals(12, takeItemFuture.get(5, TimeUnit.SECONDS), "Queue should unblock and return item");
+		} finally {
+			executorService.shutdownNow();
+		}
+	}
 
-    @Test
-    void shouldBlockOnTakeWhenQueueEmpty() throws InterruptedException, ExecutionException, TimeoutException {
-        ExecutorService executorService = Executors.newFixedThreadPool(1);
-        try {
-            Future<Integer> takeItemFuture = executorService.submit(() -> {
-                try {
-                    return testQueue.take();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            assertFalse(takeItemFuture.isDone(), "Queue should block as it is empty");
-            testQueue.put(12);
-            assertEquals(12, takeItemFuture.get(5, TimeUnit.SECONDS), "Queue should unblock and return item");
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
+	@Test
+	void shouldBlockOnPutWhenQueueFull() throws InterruptedException, ExecutionException, TimeoutException {
+		int item = 0;
+		for (int i = 0; i < CAPACITY; i++) {
+			testQueue.put(item++);
+		}
+		ExecutorService executorService = Executors.newFixedThreadPool(1);
+		try {
+			Future<Boolean> future = executorService.submit(() -> {
+				try {
+					testQueue.put(10);
+					return true;
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			});
+			assertFalse(future.isDone(), "Queue should block as it is full");
+			testQueue.take();
+			assertTrue(future.get(5, TimeUnit.SECONDS), "Queue should unblock");
+		} finally {
+			executorService.shutdownNow();
+		}
+	}
 
-    @Test
-    void shouldBlockOnPutWhenQueueFull() throws InterruptedException, ExecutionException, TimeoutException {
-        int item = 0;
-        for (int i = 0; i < CAPACITY; i++) {
-            testQueue.put(item++);
-        }
-        ExecutorService executorService = Executors.newFixedThreadPool(1);
-        try {
-            Future<Boolean> future = executorService.submit(() -> {
-                try {
-                    testQueue.put(10);
-                    return true;
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            assertFalse(future.isDone(), "Queue should block as it is full");
-            testQueue.take();
-            assertTrue(future.get(5, TimeUnit.SECONDS), "Queue should unblock");
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
+	@Test
+	void shouldPropagateInterruptionFromTake() throws Exception {
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+		try {
+			Future<Integer> future = executor.submit(() -> {
+				Thread.currentThread().interrupt();
+				return testQueue.take();
+			});
 
+			ExecutionException exception = assertThrows(
+					ExecutionException.class,
+					() -> future.get(5, TimeUnit.SECONDS));
 
-    @Test
-    void shouldPropagateInterruptionFromTake() throws Exception {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        try {
-            Future<Integer> future = executor.submit(() -> {
-                Thread.currentThread().interrupt();
-                return testQueue.take();
-            });
+			assertInstanceOf(
+					InterruptedException.class,
+					exception.getCause());
+		} finally {
+			executor.shutdownNow();
+		}
+	}
 
-            ExecutionException exception = assertThrows(
-                    ExecutionException.class,
-                    () -> future.get(5, TimeUnit.SECONDS)
-            );
+	@Test
+	void putShouldRespondToInterrupts() throws InterruptedException {
+		for (int i = 0; i < CAPACITY; i++) {
+			testQueue.put(1);
+		}
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		try {
+			final Future<Boolean> putFuture = executorService.submit(() -> {
+				testQueue.put(2);
+				return true;
+			});
+			assertFalse(putFuture.isDone(), "Put should block as capacity is reached");
+			putFuture.cancel(true);
+			assertThrows(
+					CancellationException.class,
+					() -> putFuture.get(5, TimeUnit.SECONDS));
+			assertTrue(putFuture.isCancelled());
+			assertEquals(CAPACITY, testQueue.size());
+		} finally {
+			executorService.shutdownNow();
+		}
+	}
 
-            assertInstanceOf(
-                    InterruptedException.class,
-                    exception.getCause()
-            );
-        } finally {
-            executor.shutdownNow();
-        }
-    }
+	@Test
+	void takeShouldRespondTInterrupts() {
+		ExecutorService executorService = Executors.newSingleThreadExecutor();
+		try {
+			final Future<Integer> takeFuture = executorService.submit(() -> testQueue.take());
+			assertFalse(takeFuture.isDone(), "Take should block as queue is empty");
+			takeFuture.cancel(true);
+			assertThrows(
+					CancellationException.class,
+					() -> takeFuture.get(5, TimeUnit.SECONDS));
+			assertTrue(takeFuture.isCancelled());
+		} finally {
+			executorService.shutdownNow();
+		}
 
-    @Test
-    void shouldBeCorrectDuringConcurrentPutsAndTakes() throws InterruptedException, ExecutionException, TimeoutException {
-        ExecutorService executorService = Executors.newFixedThreadPool(20);
-        Set<Integer> itemsOffered = ConcurrentHashMap.newKeySet();
-        try {
-            AtomicInteger items = new AtomicInteger(0);
-            List<Future<Boolean>> putFutures = new ArrayList<>();
-            List<Future<Integer>> takeFutures = new ArrayList<>();
-            CountDownLatch putLatch = new CountDownLatch(10);
-            CountDownLatch takeLatch = new CountDownLatch(10);
-            CountDownLatch readyLatch = new CountDownLatch(1);
-            // put items
-            for (int i = 0; i < 10; i++) {
-                putFutures.add(executorService.submit(() -> {
-                    try {
-                        putLatch.countDown();
-                        readyLatch.await();
-                        int item = items.incrementAndGet();
-                        testQueue.put(item);
-                        itemsOffered.add(item);
-                        return true;
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }));
+	}
 
-            }
-            // take items
-            for (int i = 0; i < 10; i++) {
-                takeFutures.add(executorService.submit(() -> {
-                    try {
-                        takeLatch.countDown();
-                        readyLatch.await();
-                        return testQueue.take();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }));
-            }
-            assertTrue(putLatch.await(5, TimeUnit.SECONDS));
-            assertTrue(takeLatch.await(5, TimeUnit.SECONDS));
-            readyLatch.countDown();
-            for (Future<Boolean> putFuture : putFutures) {
-                assertTrue(putFuture.get(5, TimeUnit.SECONDS));
-            }
+	@Test
+	void shouldHaveFifoBehavior() throws InterruptedException {
+		testQueue.put(1);
+		testQueue.put(2);
+		testQueue.put(3);
 
-            for (Future<Integer> takeFuture : takeFutures) {
-                assertTrue(itemsOffered.remove(takeFuture.get(5, TimeUnit.SECONDS)));
-            }
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
+		assertEquals(1, testQueue.take());
+		assertEquals(2, testQueue.take());
+		assertEquals(3, testQueue.take());
+	}
+
+	@Test
+	void shouldBeCorrectDuringConcurrentPutsAndTakes() throws InterruptedException, ExecutionException, TimeoutException {
+		ExecutorService executorService = Executors.newFixedThreadPool(20);
+		try {
+			AtomicInteger items = new AtomicInteger(0);
+			List<Future<Boolean>> putFutures = new ArrayList<>();
+			List<Future<Integer>> takeFutures = new ArrayList<>();
+			CountDownLatch putLatch = new CountDownLatch(10);
+			CountDownLatch takeLatch = new CountDownLatch(10);
+			CountDownLatch readyLatch = new CountDownLatch(1);
+			// put items
+			for (int i = 0; i < 10; i++) {
+				putFutures.add(executorService.submit(() -> {
+					try {
+						putLatch.countDown();
+						readyLatch.await();
+						testQueue.put(items.incrementAndGet());
+						return true;
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+				}));
+
+			}
+			// take items
+			for (int i = 0; i < 10; i++) {
+				takeFutures.add(executorService.submit(() -> {
+					try {
+						takeLatch.countDown();
+						readyLatch.await();
+						return testQueue.take();
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+				}));
+			}
+			assertTrue(putLatch.await(5, TimeUnit.SECONDS));
+			assertTrue(takeLatch.await(5, TimeUnit.SECONDS));
+			readyLatch.countDown();
+			for (Future<Boolean> putFuture : putFutures) {
+				assertTrue(putFuture.get(5, TimeUnit.SECONDS));
+			}
+			Set<Integer> expectedItems = new HashSet<>();
+			for (int i = 1; i <= items.get(); i++) {
+				expectedItems.add(i);
+			}
+			for (Future<Integer> takeFuture : takeFutures) {
+				final Integer item = takeFuture.get(1, TimeUnit.SECONDS);
+				assertTrue(expectedItems.remove(item), "Expected ueue to contain item -" + item);
+			}
+		} finally {
+			executorService.shutdownNow();
+		}
+	}
 
 }
