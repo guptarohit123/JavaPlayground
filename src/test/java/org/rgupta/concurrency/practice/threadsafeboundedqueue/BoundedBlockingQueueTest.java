@@ -3,8 +3,7 @@ package org.rgupta.concurrency.practice.threadsafeboundedqueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -71,12 +70,36 @@ class BoundedBlockingQueueTest {
         } finally {
             executorService.shutdownNow();
         }
+    }
 
+
+    @Test
+    void shouldPropagateInterruptionFromTake() throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> future = executor.submit(() -> {
+                Thread.currentThread().interrupt();
+                return testQueue.take();
+            });
+
+            ExecutionException exception = assertThrows(
+                    ExecutionException.class,
+                    () -> future.get(5, TimeUnit.SECONDS)
+            );
+
+            assertInstanceOf(
+                    InterruptedException.class,
+                    exception.getCause()
+            );
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
     void shouldBeCorrectDuringConcurrentPutsAndTakes() throws InterruptedException, ExecutionException, TimeoutException {
         ExecutorService executorService = Executors.newFixedThreadPool(20);
+        Set<Integer> itemsOffered = ConcurrentHashMap.newKeySet();
         try {
             AtomicInteger items = new AtomicInteger(0);
             List<Future<Boolean>> putFutures = new ArrayList<>();
@@ -90,7 +113,9 @@ class BoundedBlockingQueueTest {
                     try {
                         putLatch.countDown();
                         readyLatch.await();
-                        testQueue.put(items.incrementAndGet());
+                        int item = items.incrementAndGet();
+                        testQueue.put(item);
+                        itemsOffered.add(item);
                         return true;
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
@@ -116,8 +141,9 @@ class BoundedBlockingQueueTest {
             for (Future<Boolean> putFuture : putFutures) {
                 assertTrue(putFuture.get(5, TimeUnit.SECONDS));
             }
+
             for (Future<Integer> takeFuture : takeFutures) {
-                assertTrue(takeFuture.get(5, TimeUnit.SECONDS) <= 20);
+                assertTrue(itemsOffered.remove(takeFuture.get(5, TimeUnit.SECONDS)));
             }
         } finally {
             executorService.shutdownNow();

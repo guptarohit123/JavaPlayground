@@ -1,13 +1,12 @@
 package org.rgupta.concurrency.practice.threadsafeboundedqueue;
 
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class BoundedBlockingQueue<T> {
-
 
     private final Queue<T> queue;
     private final Semaphore availableSlots;
@@ -15,18 +14,21 @@ public class BoundedBlockingQueue<T> {
     private final ReentrantLock queueLock;
 
     public BoundedBlockingQueue(int capacity) {
+        if (capacity <= 0) {
+            throw new IllegalArgumentException("Illegal capacity " + capacity);
+        }
         this.queue = new ArrayDeque<>(capacity);
         this.availableSlots = new Semaphore(capacity);
         this.availableItems = new Semaphore(0);
         this.queueLock = new ReentrantLock();
-
     }
 
     public void put(T item) throws InterruptedException {
+        Objects.requireNonNull(item, "item");
         boolean added = false;
+        this.availableSlots.acquire();
+        this.queueLock.lock();
         try {
-            this.availableSlots.acquire();
-            this.queueLock.lock();
             added = this.queue.offer(item);
         } finally {
             this.queueLock.unlock();
@@ -39,18 +41,25 @@ public class BoundedBlockingQueue<T> {
     }
 
     public T take() throws InterruptedException {
+        this.availableItems.acquire();
+        T item;
+        this.queueLock.lock();
         try {
-            this.availableItems.acquire();
-            this.queueLock.lock();
-            return this.queue.poll(); // this will not fail, so I do not need to release the acquired availableItems permit
+            item = this.queue.remove();
         } finally {
             this.queueLock.unlock();
-            this.availableSlots.release();
         }
+        this.availableSlots.release();
+        return item;
     }
 
     public int size() {
-        return availableItems.availablePermits();
+        try {
+            this.queueLock.lock();
+            return this.queue.size();
+        } finally {
+            this.queueLock.unlock();
+        }
     }
 
 }
