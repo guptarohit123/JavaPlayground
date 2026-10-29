@@ -5,6 +5,48 @@ import java.util.HashMap;
 import java.util.Map;
 
 class FinancialTransactionCsvProcessor {
+	public String solution_chatgpt(String S) {
+
+		Map<String, BigDecimal> totals = new HashMap<>();
+
+		// Skip the header and process one line at a time.
+		S.lines()
+				.skip(1)
+				.filter(line -> !line.isBlank())
+				.forEach(line -> {
+
+					String[] fields = line.split(",");
+
+					if ("EUR".equals(fields[2])
+							&& "SETTLED".equals(fields[4])) {
+
+						String account = fields[1];
+						BigDecimal amount = new BigDecimal(fields[3]);
+
+						totals.merge(account, amount, BigDecimal::add);
+					}
+				});
+
+		String winner = null;
+		BigDecimal highestTotal = null;
+
+		for (Map.Entry<String, BigDecimal> entry : totals.entrySet()) {
+
+			String account = entry.getKey();
+			BigDecimal total = entry.getValue();
+
+			if (highestTotal == null
+					|| total.compareTo(highestTotal) > 0
+					|| (total.compareTo(highestTotal) == 0
+							&& account.compareTo(winner) < 0)) {
+
+				highestTotal = total;
+				winner = account;
+			}
+		}
+
+		return winner == null ? "NONE" : winner;
+	}
 
 	public String solution(String S) {
 		// Your implementation
