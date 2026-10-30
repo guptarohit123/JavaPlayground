@@ -36,24 +36,24 @@ public class IntradayTradingRiskMonitor {
 		final RiskInput riskInput = gson.fromJson(json, RiskInput.class);
 		final Set<String> breachedDesks = new HashSet<>();
 		riskInput.desks.forEach(desk -> {
-			BigDecimal currentExposure = BigDecimal.ZERO;
+			BigDecimal netExposure = BigDecimal.ZERO;
 			for (Trade trade : desk.trades()) {
 				if (trade.status() != Status.EXECUTED) {
 					continue;
 				}
 				if (trade.side() == Side.BUY) {
-					currentExposure = currentExposure.add(trade.amountCents());
+					netExposure = netExposure.add(trade.amountCents());
 				} else {
-					currentExposure = currentExposure.subtract(trade.amountCents());
+					netExposure = netExposure.subtract(trade.amountCents());
 				}
-				if (currentExposure.abs().compareTo(desk.limitCents()) > 0) {
+				if (netExposure.abs().compareTo(desk.limitCents()) > 0) {
 					breachedDesks.add(desk.name());
 				}
 			}
 		});
-		String[] brachedDesksArr = breachedDesks.toArray(new String[0]);
-		Arrays.sort(brachedDesksArr);
-		return brachedDesksArr;
+		String[] breachedDesksArr = breachedDesks.toArray(new String[0]);
+		Arrays.sort(breachedDesksArr);
+		return breachedDesksArr;
 	}
 
 	public static void main(String[] args) {
