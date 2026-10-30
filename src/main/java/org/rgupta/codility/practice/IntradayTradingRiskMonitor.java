@@ -35,7 +35,7 @@ public class IntradayTradingRiskMonitor {
 		Gson gson = new Gson();
 		final RiskInput riskInput = gson.fromJson(json, RiskInput.class);
 		final Set<String> breachedDesks = new HashSet<>();
-		riskInput.desks.forEach(desk -> {
+		riskInput.desks().forEach(desk -> {
 			BigDecimal netExposure = BigDecimal.ZERO;
 			for (Trade trade : desk.trades()) {
 				if (trade.status() != Status.EXECUTED) {
@@ -48,6 +48,7 @@ public class IntradayTradingRiskMonitor {
 				}
 				if (netExposure.abs().compareTo(desk.limitCents()) > 0) {
 					breachedDesks.add(desk.name());
+					break;
 				}
 			}
 		});
