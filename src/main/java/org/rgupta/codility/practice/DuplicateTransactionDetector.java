@@ -9,8 +9,8 @@ public class DuplicateTransactionDetector {
 		// Implement
 		Map<Integer, Integer> indexMap = new HashMap<>();
 		for (int i = 0; i < A.length; i++) {
-			final Integer prevSeenIdx = indexMap.get(A[i]);
-			if (prevSeenIdx != null && i - prevSeenIdx >= K) {
+			final Integer lastSeenIdx = indexMap.get(A[i]);
+			if (lastSeenIdx != null && i - lastSeenIdx <= K) {
 				return i;
 			}
 			indexMap.put(A[i], i);

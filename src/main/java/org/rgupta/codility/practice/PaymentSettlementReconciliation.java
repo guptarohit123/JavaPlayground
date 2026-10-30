@@ -8,6 +8,54 @@ import java.util.Set;
 
 public class PaymentSettlementReconciliation {
 
+	public String[] solution_chatGpt(String[] ledger, String[] bank) {
+
+		Map<String, Long> expected = new HashMap<>();
+		Map<String, Long> confirmed = new HashMap<>();
+		Set<String> discrepancies = new HashSet<>();
+
+		// Load expected settlements.
+		for (String record : ledger) {
+			String[] fields = record.split(",");
+			expected.put(fields[0], Long.parseLong(fields[1]));
+		}
+
+		// Process external bank confirmations.
+		for (String record : bank) {
+			String[] fields = record.split(",");
+
+			String id = fields[0];
+			long amount = Long.parseLong(fields[1]);
+
+			Long previous = confirmed.putIfAbsent(id, amount);
+
+			// Conflicting bank confirmations.
+			if (previous != null && previous.longValue() != amount) {
+				discrepancies.add(id);
+			}
+
+			// Unknown payment or amount mismatch.
+			Long expectedAmount = expected.get(id);
+
+			if (expectedAmount == null
+					|| expectedAmount.longValue() != amount) {
+				discrepancies.add(id);
+			}
+		}
+
+		// Payments with no bank confirmation.
+		for (String id : expected.keySet()) {
+			if (!confirmed.containsKey(id)) {
+				discrepancies.add(id);
+			}
+		}
+
+		String[] result = discrepancies.toArray(new String[0]);
+		Arrays.sort(result);
+
+		return result;
+	}
+
 	public String[] solution(String[] ledger, String[] bank) {
 		Set<String> paymentsInError = new HashSet<>();
 		Map<String, Long> ledgerMap = new HashMap<>();
