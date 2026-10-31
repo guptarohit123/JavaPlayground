@@ -7,7 +7,6 @@ public class LongestValidWindow {
 
     public int solution(int[] A, int K) {
 
-        System.out.println("begining of loop");
         int left = 0, right = 0;
         int maxValidWindow = 0;
         Map<Integer, Integer> freqMap = new HashMap<>();
