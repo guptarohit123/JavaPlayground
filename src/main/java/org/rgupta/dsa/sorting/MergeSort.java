@@ -29,10 +29,10 @@ public final class MergeSort {
         int mid = l + (r - l) / 2;
         mergeSort(arr, l, mid);
         mergeSort(arr, mid + 1, r);
-        merge(arr, l, r, mid);
+        merge(arr, l, mid, r);
     }
 
-    void merge(int[] arr, int l, int r, int mid) {
+    void merge(int[] arr, int l, int mid, int r) {
 
         int length1 = mid - l + 1;
         int length2 = r - mid;
